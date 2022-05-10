@@ -12,15 +12,15 @@ exports.getMy = async (req, res) => {
 exports.add = async (req, res) => {
   const { title, description, userId } = req.body
 
-  let videoFilename;
+  let imageFilename;
   if (req.file) {
-    videoFilename = req.file.filename
+    imageFilename = req.file.filename
   }
 
   let post = await new Post({
     title,
     description,
-    videoFilename,
+    imageFilename,
     userId,
   }).save()
 
@@ -28,13 +28,14 @@ exports.add = async (req, res) => {
 }
 
 exports.edit = async (req, res) => {
-  const { _id, title, description } = req.body
+  const { _id, title, description,imageFilename } = req.body
   let post = await Post.findOneAndUpdate(
     { _id: _id },
     {
       $set: {
         title,
-        description
+        description,
+        imageFilename
       },
     }
   )
@@ -46,7 +47,7 @@ exports.delete = async (req, res) => {
   await Post.findById(req.body._id)
     .then(function (post) {
 
-      deleteFile("./uploads/videos/" + post.videoFilename)
+      deleteFile("./uploads/images/" + post.imageFilename)
       post.remove()
 
       res.status(200).send({ message: "Post deleted successfully" })
@@ -62,7 +63,7 @@ exports.deleteAll = async (_req, res) => {
     .then(function (posts) {
       posts.forEach(function (post) {
 
-        deleteFile("./uploads/videos/" + post.videoFilename)
+        deleteFile("./uploads/images/" + post.imageFilename)
         post.remove()
 
         res.status(200).send({ message: "All posts have been deleted" })

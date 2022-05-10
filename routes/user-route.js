@@ -12,7 +12,7 @@ router.post("/login",verifyEmail, userController.login);
 router.get("/verify-email",userController.verify);
 router.post("/forgot-password", userController.forgotPassword);
 router.put("/update-profile", userController.updateProfile);
-router.put("/update-password", userController.updatePassword);
+router.get("/update-password", userController.updatePassword);
 
 router.route("/one")
     .get(userController.get)

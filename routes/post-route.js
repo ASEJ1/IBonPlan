@@ -1,11 +1,11 @@
 const express = require("express")
 const router = express.Router()
 const PostController = require("../controllers/post-controller")
-const upload = require('../middlewares/storage-videos')
+const upload = require('../config/storage-images')
 
 router.route("/")
   .get(PostController.getAll)
-  .post(upload.single('video'), PostController.add)
+  .post(/*upload.single('image'), */PostController.add)
   .put(PostController.edit)
   .delete(PostController.delete)
 

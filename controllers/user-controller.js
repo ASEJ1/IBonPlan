@@ -4,7 +4,7 @@ const User = require('../models/user')
 const jwt = require('jsonwebtoken')
 const nodemailer = require('nodemailer')
 const async = require('hbs/lib/async')
-const randomstring = require ("randomstring")
+const bcrypt = require("bcrypt")
 
 
 ///// FUNCTIONS ---------------------------------------------------------
@@ -20,62 +20,30 @@ const transporter = nodemailer.createTransport({
     pass: process.env.GMAIL_PASSWORD,
   },
 });
-
-
-const crypt = (salt, text) => {
-  const textToChars = (text) => text.split("").map((c) => c.charCodeAt(0));
-  const byteHex = (n) => ("0" + Number(n).toString(16)).substr(-2);
-  const applySaltToChar = (code) => textToChars(salt).reduce((a, b) => a ^ b, code);
-
-  return text
-    .split("")
-    .map(textToChars)
-    .map(applySaltToChar)
-    .map(byteHex)
-    .join("");
-};
-
-const decrypt = (salt, encoded) => {
-  const textToChars = (text) => text.split("").map((c) => c.charCodeAt(0));
-  const applySaltToChar = (code) => textToChars(salt).reduce((a, b) => a ^ b, code);
-  return encoded
-    .match(/.{1,2}/g)
-    .map((hex) => parseInt(hex, 16))
-    .map(applySaltToChar)
-    .map((charCode) => String.fromCharCode(charCode))
-    .join("");
-};
-
-
 ///// Exports ---------------------------------------------------------
 
     
-exports.register = (req, res) => {
+exports.register = async (req, res) => {
     
       const {username,email,password,gender} = req.body 
 
       if(!email || !password){
         return res.status(422).json({error:"please add email or password"})
       }      
-      User.find({email}).then(result=>{
-        if(result.length){
-          res.json({
-            message:" email already exist !!"
-          })
-        }
-        else{
-          const encrypted_text = crypt("salt", password);
-
-            const user = new User({
+      else if (await User.findOne({ email })) {
+        res.status(403).send({ message: "User already exist !" })
+      } else {
+        let user = await new User({
               username,
               email,
-              password:encrypted_text,
+              password: await bcrypt.hash(password, 10),
               gender,
-            })
-          user.save()
+            }).save()
+
+            // token creation
           const token = generateUserToken(user._id)
 
-          const decrypted_string = decrypt("salt", encrypted_text)
+
 
           var mailOptions = {
             from: process.env.GMAIL_USER,
@@ -96,16 +64,15 @@ exports.register = (req, res) => {
               console.log(error)
             } else {
               console.log("Email sent to "+ user.email)
-              res.json({user,decrypted_string})
             }
           })
+          res.status(200).send({
+            message: "success !",
+            user})
         
-          }
-      })
-    
-
-    
+          }   
 }
+
 exports.verify = async (req, res) => {
   try{
     const token = req.query.token
@@ -136,39 +103,22 @@ exports.login = async (req, res) => {
           if(!email || !password){
              return res.status(422).json({error:"please add email or password"})
           }
-          User.findOne({email:email})
-          .then(user=>{
-              if(!user){
-                 return res.status(422).json({error:"Invalid Email or password"})
-              }
-              const decrypted_string = decrypt("salt", user.password)
-              if(password == decrypted_string)
-              {
-                    const {_id,username,email} = user
-        
-                     const token = generateUserToken(user._id)
+          const user = await User.findOne({ email })
 
-                     res.json({token,user})
+          if (user && (await bcrypt.compare(password, user.password))) {
+
+            const token = generateUserToken(user._id)
+
+              res.json({token,user})
               }
               else{
-                      return res.status(422).json({error:"Invalid Email or password"})
+                  return res.status(422).json({error:"Invalid Email or password"})
                       
-                  }
-              })
-              .catch(err=>{
-                  console.log(err)
-              })
-          
+                  }        
 }
 
 exports.get = async (req, res) => {
   const user = await User.findById(req.body._id)
-  if (user) {
-    const decrypted_string = decrypt("salt", user.password)
-    res.status(200).send({
-      message: "password is : " + decrypted_string
-    })
-  }
 }
 
 exports.getAll = async (req, res) => {
@@ -181,19 +131,17 @@ exports.deleteAll = async (req, res) => {
 }
 
 exports.forgotPassword = async (req, res) => {
+
   const user = await User.findOne({ email: req.body.email })
 
   if (user) {
-    const decrypted_string = decrypt("salt", user.password)
 
     var mailOptions = {
       from: process.env.GMAIL_USER,
       to: user.email,
       subject: "Forget Password",
-      html: "<h3>We heard that you forget your password</h3><p> Here's your password : <b style='color : blue'>" +
-      decrypted_string 
-      +
-      "</b></p>",}
+      html: "<h3>We heard that you forget your password</h3><p> Here's your rest password link : <b style='color : blue'><a href='http://" +req.headers.host+"/user/update-password'>Reset Your Password</a></b></p>",}
+
     transporter.verify(function (error, success) {
       if (error) {
         console.log(error)
@@ -206,14 +154,9 @@ exports.forgotPassword = async (req, res) => {
       if (error) {
         console.log(error)
       } else {
-        console.log("Rest password code sent to "+ user.email)
-        res.json({user})
+        console.log("Rest password link sent to "+ user.email)
+        res.json({message : "Rest password link sent to "+ user.email})
       }
-    })
-
-    res.status(200).send({
-      message: "Your password sent to " + user.email + "  ------------------------->  " +
-      " Your password is : " + decrypted_string
     })
   } else {
     res.status(404).send({ message: "User dosen't exist !" })
@@ -242,24 +185,25 @@ exports.updatePassword = async (req, res) => {
   const { email, newPassword } = req.body
 
   if (newPassword) {
-    const newPasswordEncrypted = crypt("salt", newPassword);
+    newPasswordEncrypted = await bcrypt.hash(newPassword, 10)
 
     let user = await User.findOneAndUpdate(
       { email: email },
       {
         $set: {
-          password: newPasswordEncrypted,
+          password:newPasswordEncrypted,
         },
       }
     )
 
     return res.send({ message: "Password updated successfully", user })
   }
-  // } else if (newPassword == user.password) {
-  //   return res.status(402).send({ message: "it's the same password ! you should choose a new one." })
-  // }
-  else{
-    return res.status(403).send({ message: "Password should not be empty" })
+   
+  else if (bcrypt.compare(password, user.password)) {
+    res.status(402).send({ message: "it's the same password ! you should choose a new one." })
+  }
+  else {
+     res.status(403).send({ message: "Password should not be empty" })
   }
 }
 
