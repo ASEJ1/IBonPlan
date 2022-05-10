@@ -1,15 +1,23 @@
 require('./config/db')
-const app = require('express')()
-const port = 3000
-const express = require('express')
+require("dotenv").config()
 
+
+// DEPENDENCIES
+const express = require("express")
+
+// VARIABLES
+const app = express();
+const port = 7777
+
+// MIDDLEWARES
 app.use(express.json())
-require('./models/user.model')
-app.use(require('./controllers/user.controller'))
 
 
 
-app.listen(port, ()=>{
+// ROUTES
+app.use("/user", require("./routes/user-route"))
 
-    console.log('Server running on port ', port);
-})
+
+
+// SERVER START
+app.listen(port, () => console.log(`Server up and running on port ${port} !`))
